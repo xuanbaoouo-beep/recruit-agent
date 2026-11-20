@@ -12,6 +12,7 @@ client = OpenAI(
 resp = client.chat.completions.create(
     model="deepseek-chat",
     messages=[{"role": "user", "content": "用一句话解释什么是 AI Agent"}],
+    temperature=1.3,
 )
 print(resp.choices[0].message.content)
 print("tokens:", resp.usage.total_tokens)
