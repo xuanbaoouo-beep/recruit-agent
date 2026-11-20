@@ -1,0 +1,6 @@
+name = input("请输入您的姓名：")
+age = int(input("请输入您的年龄："))
+school = input("请输入您的学校(不用输入大学二字):")
+dream = input("请输入您的梦想:")
+print(f"大家好,我是{name},{school}大学计算机专业,今年{age}岁,三年后我{age+3}岁,{dream}")
+print(type(age))
