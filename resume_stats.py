@@ -7,8 +7,12 @@ OUTPUT_FILE = BASE / "output" / "summary.json"
 
 # 把json文件读取出来  并从str转为它原有的格式
 def load_resumes(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"[警告] 找不到文件：{path}，已按空名单处理")
+        return []
 
 
 def count_degrees(resumes):
