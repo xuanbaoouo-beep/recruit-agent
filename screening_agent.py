@@ -2,10 +2,13 @@ import csv
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
+
+from interview_questions import make_questions
 
 load_dotenv()
 
@@ -19,6 +22,15 @@ BASE = Path(__file__).parent
 DATA_FILE = BASE / "data" / "resumes.json"
 OUTPUT_FILE = BASE / "output" / "screening_result.json"
 CSV_FILE = BASE / "output" / "screening_result.csv"
+LOG_DIR = BASE / "logs"
+
+
+def write_log(text):
+    now = datetime.now()
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_file = LOG_DIR / f"{now.strftime('%Y-%m-%d')}.log"
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(f"[{now.strftime('%H:%M:%S')}] {text}\n")
 
 
 def resume_to_text(r):
@@ -62,6 +74,7 @@ def screen_with_retry(r, jd):
             return screen(r, jd)
         except Exception as e:
             print(f"  {r['name']} 第 {i + 1} 次失败：{e}")
+            write_log(f"{r['name']} 第 {i + 1} 次失败：{e}")
     return {"match": False, "reason": "重试 3 次仍失败"}, {"prompt_tokens": 0, "completion_tokens": 0}
 
 
@@ -74,10 +87,13 @@ def main():
     with open(DATA_FILE, encoding="utf-8") as f:
         resumes = json.load(f)
 
+    write_log(f"开始筛选，共 {len(resumes)} 份简历，JD：{jd}")
+
     total_input = 0
     total_output = 0
 
     results = []
+    interview_items = []
     for r in resumes:
         result, usage = screen_with_retry(r, jd)
         total_input += usage["prompt_tokens"]
@@ -88,6 +104,15 @@ def main():
             label = "不匹配"
         results.append({"name": r["name"], "match": result["match"], "reason": result["reason"]})
         print(f"{r['name']}：{label}（{result['reason']}）")
+        write_log(f"{r['name']}：{label}（{result['reason']}）")
+
+        if result["match"]:
+            q_result, q_usage = make_questions(jd, resume_to_text(r))
+            total_input += q_usage["prompt_tokens"]
+            total_output += q_usage["completion_tokens"]
+            interview_items.append({"name": r["name"], "questions": q_result["questions"]})
+            print(f"  已为 {r['name']} 生成 {len(q_result['questions'])} 道面试题")
+            write_log(f"已为 {r['name']} 生成 {len(q_result['questions'])} 道面试题")
 
     results.sort(key=lambda x: x["match"], reverse=True)
 
@@ -103,9 +128,24 @@ def main():
             writer.writerow([item["name"], item["match"], item["reason"]])
     print(f"已写入：{CSV_FILE}")
 
+    if interview_items:
+        today = datetime.now().strftime("%Y-%m-%d")
+        interview_file = BASE / "output" / f"interview_questions_{today}.json"
+        interview_file.write_text(
+            json.dumps(interview_items, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        print(f"已写入：{interview_file}")
+
     cost = total_input * INPUT_PRICE + total_output * OUTPUT_PRICE
     print(f"[成本] 输入 {total_input} tokens，输出 {total_output} tokens，约 {cost:.6f} 元")
+    write_log(f"筛选结束，输入 {total_input} tokens，输出 {total_output} tokens，约 {cost:.6f} 元")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        write_log(f"程序异常退出：{e}")
+        print(f"出错了：{e}")
+        print(f"详情已写入 {LOG_DIR}")
+        sys.exit(1)
