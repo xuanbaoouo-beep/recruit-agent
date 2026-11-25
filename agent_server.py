@@ -1,12 +1,16 @@
 import time
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from agent_with_tools import run_agent
 from screening_agent import write_log
 
 app = FastAPI()
+
+WEB_FILE = Path(__file__).parent / "web" / "chat.html"
 
 SYSTEM_TEXT = "你是招聘助手。回答简洁，只回答被问到的内容，不超过 60 字。"
 
@@ -23,6 +27,11 @@ class AskRequest(BaseModel):
 @app.get("/")
 def home():
     return {"message": "招聘 Agent 服务已启动"}
+
+
+@app.get("/chat")
+def chat_page():
+    return FileResponse(WEB_FILE)
 
 
 @app.post("/ask")
