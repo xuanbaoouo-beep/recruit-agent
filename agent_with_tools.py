@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 from pathlib import Path
 
 import requests
@@ -11,7 +12,7 @@ URL = "https://api.deepseek.com/chat/completions"
 MODEL = "deepseek-chat"
 
 BASE = Path(__file__).parent
-DATA_FILE = BASE / "data" / "resumes.json"
+DB_FILE = BASE / "data" / "recruit.db"
 
 TOOLS = [
     {
@@ -46,7 +47,7 @@ TOOLS = [
         "type":"function",
         "function":{
             "name": "filter_candidates",
-            "description": "按城市和最低工作年限筛选候选人，返回符合条件的人数与姓名",
+            "description": "按城市和最低工作年限筛选候选人，返回符合条件的人数与姓名,例如: 上海 2年",
             "parameters": {
                 "type": "object",
                 "properties":{
@@ -60,23 +61,32 @@ TOOLS = [
 ]
 
 
+def query(sql, params=()):
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
 def get_candidate(name):
-    resumes = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-    for r in resumes:
-        if r["name"] == name:
-            return r
+    rows = query("SELECT * FROM candidates WHERE name = ?", (name,))
+    if rows:
+        return rows[0]
     return {"error": f"没有找到候选人 {name}"}
 
 
 def list_candidates_by_city(city):
-    resumes = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-    names = [r["name"] for r in resumes if r["address"] == city]
-    return {"city": city, "names": names}
+    rows = query("SELECT name FROM candidates WHERE address = ?", (city,))
+    return {"city": city, "names": [r["name"] for r in rows]}
+
 
 def filter_candidates(city, min_years):
-    resumes = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-    names = [r["name"] for r in resumes if r["address"] == city and r["years"] >= min_years]
-    return {"city": city, "min_years": min_years, "names": names}
+    rows = query(
+        "SELECT name FROM candidates WHERE address = ? AND years >= ?",
+        (city, min_years),
+    )
+    return {"city": city, "min_years": min_years, "names": [r["name"] for r in rows]}
 
 def run_tool(name, arguments):
     if name == "get_candidate":
